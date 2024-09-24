@@ -1,0 +1,145 @@
+---
+Author: Muhammad Salman
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+```{r}
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(caret)
+library(randomForest)
+library(e1071)
+library(ggplot2)
+
+# Load and Preprocess the Data
+
+# Load the dataset
+data <- read_csv("cleaned_weather_data.csv", show_col_types = FALSE)
+
+# Rename columns to clearly identify Latitude and Longitude
+colnames(data)[1:2] <- c("Latitude", "Longitude")
+
+# Exclude the Bolton Area
+
+# Define the exclusion zone around Bolton
+lat_min <- 53.5269
+lat_max <- 53.6269
+lon_min <- -2.4786
+lon_max <- -2.3786
+
+# Exclude rows within the Bolton area
+filtered_data <- data %>%
+  filter(!(Latitude >= lat_min & Latitude <= lat_max & 
+           Longitude >= lon_min & Longitude <= lon_max))
+
+# Check the number of rows left after filtering
+remaining_rows <- nrow(filtered_data)
+
+# Select 150 rows from the top and 150 rows from the bottom
+if (remaining_rows >= 300) {
+  selected_data <- bind_rows(
+    head(filtered_data, 150), 
+    tail(filtered_data, 150)
+  )
+  
+  # Save the selected data to a CSV file
+  write_csv(selected_data, "filtered_weather_data.csv")
+  
+  # Confirmation message
+  cat("Dataset saved successfully to: filtered_weather_data.csv\n")
+} else {
+  cat("Not enough rows after filtering. Only", remaining_rows, "rows are available.\n")
+}
+
+# Bolton Area Analysis
+
+# Define the latitude and longitude for Bolton
+bolton_lat <- 53.5833
+bolton_long <- -2.4333
+
+# Find the closest matching rows for Bolton
+bolton_data <- filtered_data %>%
+  filter(abs(Latitude - bolton_lat) < 0.05 & 
+         abs(Longitude - bolton_long) < 0.05)
+
+# Check how many rows we have around Bolton
+if (nrow(bolton_data) >= 150) {
+  selected_bolton_data <- bolton_data
+} else {
+  selected_bolton_data <- head(bolton_data, 150)
+}
+
+# EDA (Exploratory Data Analysis)
+
+# Summary statistics
+summary(data)
+
+# Visualize the distribution of key variables
+ggplot(data, aes(x = Latitude)) + 
+  geom_histogram(binwidth = 0.1, color = "black", fill = "lightblue") +
+  labs(title = "Distribution of Latitude", x = "Latitude", y = "Frequency") +
+  theme_minimal()
+
+ggplot(data, aes(x = Longitude)) + 
+  geom_histogram(binwidth = 0.1, color = "black", fill = "lightblue") +
+  labs(title = "Distribution of Longitude", x = "Longitude", y = "Frequency") +
+  theme_minimal()
+
+# Handle Missing Values
+
+# Check for missing values
+missing_values <- sum(is.na(data))
+cat("Total missing values:", missing_values, "\n")
+
+# Impute missing values using median
+data_imputed <- data %>%
+  mutate(across(everything(), ~ifelse(is.na(.), median(., na.rm = TRUE), .)))
+
+# Check for missing values after imputation
+missing_values_after <- sum(is.na(data_imputed))
+cat("Total missing values after imputation:", missing_values_after, "\n")
+
+# Model Training and Evaluation
+
+# Split the data into training and testing sets
+set.seed(123)
+train_index <- createDataPartition(data_imputed$Latitude, p = 0.8, list = FALSE)
+train_data <- data_imputed[train_index, ]
+test_data <- data_imputed[-train_index, ]
+
+# Define the formula for prediction
+formula <- Latitude ~ .
+
+# 1. Linear Regression
+lm_model <- train(formula, data = train_data, method = "lm")
+lm_predictions <- predict(lm_model, test_data)
+lm_rmse <- RMSE(lm_predictions, test_data$Latitude)
+cat("Linear Regression RMSE:", lm_rmse, "\n")
+
+# 2. Random Forest Regression
+rf_model <- train(formula, data = train_data, method = "rf", trControl = trainControl(method = "cv", number = 5))
+rf_predictions <- predict(rf_model, test_data)
+rf_rmse <- RMSE(rf_predictions, test_data$Latitude)
+cat("Random Forest RMSE:", rf_rmse, "\n")
+
+# 3. Support Vector Regression (SVR)
+svr_model <- train(formula, data = train_data, method = "svmRadial")
+svr_predictions <- predict(svr_model, test_data)
+svr_rmse <- RMSE(svr_predictions, test_data$Latitude)
+cat("Support Vector Regression RMSE:", svr_rmse, "\n")
+
+# Save and Export the Model
+
+# Save the trained models
+saveRDS(lm_model, "linear_regression_model.rds")
+saveRDS(rf_model, "random_forest_model.rds")
+saveRDS(svr_model, "support_vector_regressor_model.rds")
+
+cat("Models saved successfully.\n")
+
+
+
+```
